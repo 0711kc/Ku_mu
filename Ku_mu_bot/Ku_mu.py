@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from selenium.webdriver.chrome.service import Service
 from youtube_dl import YoutubeDL
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -9,6 +10,7 @@ from discord.ui import Button, View, Select
 import bs4
 import asyncio
 from urllib import request
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 #channel = open("channel", "r").readline() # 채널 ID 가져오기
@@ -21,10 +23,11 @@ user = []       # 유저가 입력한 노래 정보
 musictitle = [] # 가공한 정보의 노래 제목
 song_queue = [] # 가공한 정보의 노래 링크
 musicnow = []   # 현재 출력되는 노래
-#username = []  # 노래를 입력한 사용자 이름
+username = []   # 노래를 입력한 사용자 이름
+duration = []   # 가공한 정보의 노래 길이
 #linkList = []  # 가공한 정보의 유튜브 링크
 
-message_time = 5 # 메세지를 보내고 지우는 시간 간격
+message_time = 8 # 메세지를 보내고 지우는 시간 간격
 
 bot_musics = ["즐거운", "신나는", "활기찬", "슬픈", "가슴 아픈", "눈물겨운", "잔잔한", "어두운", "지루한", "졸린", "빠른"]
 
@@ -69,7 +72,7 @@ async def on_ready():
         await interaction.response.defer()
         try:
             vc.pause()
-            status = await ch.send(embed = discord.Embed(title= "넘어가기", description = musicnow[0]  + "을(를) 종료했습니다.", color = 0x00ff00))
+            status = await ch.send(embed = discord.Embed(title= "넘어가기", description = username[0] + "님이 신청하신 " + musicnow[0]  + "을(를) 종료했습니다.", color = 0x00ff00))
             await asyncio.sleep(message_time)
             await status.delete()
             play_next()
@@ -110,20 +113,21 @@ async def on_ready():
             global Text
             for i in range(len(musictitle)):
                 if i == 0:
-                    Text = "재생중인 노래 : " + str(musictitle[i])
+                    Text = "재생중인 노래 : " + str(musictitle[i]) + " | " + str(duration[i]) + "\n신청자 : " + username[i]
                 else:
-                    Text = Text + "\n" + str(i) + ". " + str(musictitle[i])
+                    Text = Text + "\n" + str(i) + ". " + str(musictitle[i]) + " | " + str(duration[i]) + "\n  신청자 : " + username[i]
                 
             status = await ch.send(embed = discord.Embed(title= "노래목록", description = Text.strip(), color = 0x00ff00))
         await asyncio.sleep(message_time)
         await status.delete()
 
+    # 재생 중인 노래 확인 버튼 callback 함수
     async def callback_whatSong(interaction):
         await interaction.response.defer()
         if len(musicnow) == 0:
             status = await ch.send("현재 재생중인 노래가 없습니다.")
         else:
-            status = await ch.send("현재 재생중인 노래 : " + str(musictitle[0]))
+            status = await ch.send(embed = discord.Embed(title= "재생중인 노래", description = str(musictitle[0]) + " | " + str(duration[0]) + "\n신청자 : " + username[0], color = 0x00ff00))
         await asyncio.sleep(message_time)
         await status.delete()
 
@@ -146,14 +150,8 @@ async def on_ready():
     
     print("크뮤 봇이 실행되었습니다.")
 
-    global his
-    his = False
 
     await bot_presence(bot_musics)
-
-def is_connected(ctx):
-    voice_client = get(ctx.bot.voice_clients, guild=ctx.guild)
-    return voice_client and voice_client.is_connected()
 
 @bot.event
 async def on_message(ctx):
@@ -167,7 +165,9 @@ async def on_message(ctx):
     if topic is not None and '#주크박스' in topic:
         #노래봇이 음성 채널에 접속
         if ctx.author.voice is None:
-            await ctx.channel.send("음성 채널에 접속 후 이용해주세요.")
+            status = await ctx.channel.send("음성 채널에 접속 후 이용해주세요.")
+            await asyncio.sleep(message_time)
+            await status.delete()
             return
         else:
             try:
@@ -182,10 +182,9 @@ async def on_message(ctx):
         FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 
         await ctx.delete()
-        temp = await ch.send("음악을 찾는 중입니다...")
+        temp = await ch.send(str(ctx.content) + " 음악을 찾는 중입니다...")
 
         if len(musicnow) == 0:      # 재생하고 있는 노래가 없는 경우
-            his = True
             if 'https://www.youtube.com/' in str(ctx.content):
                 result, URLTEST = url_music(ctx.content)
             else:
@@ -196,19 +195,20 @@ async def on_message(ctx):
 
             try:
                 await temp.delete()
+                username.append(str(ctx.author))
                 vc.play(discord.FFmpegPCMAudio(URLTEST,**FFMPEG_OPTIONS), after=lambda e: play_next())
             except:
+                await temp.delete()
                 status = await ch.send(str(ctx.content) + "을(를) 재생하는 과정에서 오류가 발생하였습니다. 다시 입력해주세요.")
                 await asyncio.sleep(message_time)
                 await status.delete()
                 return
-
-            status = await ch.send(embed = discord.Embed(title= "노래 재생", description = "현재 " + result + "을(를) 재생하고 있습니다.", color = 0x00ff00))
+            
+            status = await ch.send(embed = discord.Embed(title= "노래 재생", description = "현재 " + result + "을(를) 재생하고 있습니다. | " + str(duration[int(len(duration)-1)]) + "\n신청자 : " + username[0], color = 0x00ff00))
             await asyncio.sleep(message_time)
             await status.delete()
         
         else:     # 재생하고 있는 노래가 있는 경우
-            his = True
             if 'https://www.youtube.com/' in ctx.content:
                 result, URLTEST = url_music(ctx.content)
             else:
@@ -223,7 +223,9 @@ async def on_message(ctx):
             await temp.delete()
             user.append(ctx.content)
             song_queue.append(URLTEST)
-            status = await ctx.channel.send(result + "을(를) 재생목록에 추가했어요!")
+            username.append(str(ctx.author))
+            #status = await ctx.channel.send(result + "을(를) 재생목록에 추가했어요! 신청자 : " + str(ctx.author))
+            status = await ch.send(embed = discord.Embed(title= "대기열 추가", description = result + "을(를) 재생목록에 추가했어요! | " + str(duration[int(len(duration)-1)]) + "\n신청자 : " + str(ctx.author), color = 0x00ff00))
             await asyncio.sleep(message_time)
             await status.delete()
 
@@ -236,9 +238,9 @@ def title(msg):
 
     options = webdriver.ChromeOptions()
     options.add_argument("headless")
+    options.add_argument('--log-level=1')
 
-    chromedriver_dir = r"C:\Users\0711k\Desktop\code\chromedriver_win32\chromedriver.exe"
-    driver = webdriver.Chrome(chromedriver_dir, options = options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
     driver.get("https://www.youtube.com/results?search_query="+msg+"+lyrics")
 
@@ -251,9 +253,12 @@ def title(msg):
         entireText = entireNum.text.strip()
         musicnow.append(entireText)
         musictitle.append(entireText)
-
         musicurl = entireNum.get('href')
         url = 'https://www.youtube.com'+musicurl
+
+        aria = entireNum["aria-label"].split()
+        temp_duration = aria[len(aria)-4] + " " + aria[len(aria)-3]
+        duration.append(temp_duration)
 
         with YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -270,27 +275,32 @@ def url_music(msg):
 
     options = webdriver.ChromeOptions()
     options.add_argument("headless")
+    options.add_argument('--log-level=1')
 
-    chromedriver_dir = r"C:\Users\0711k\Desktop\code\chromedriver_win32\chromedriver.exe"
-    driver = webdriver.Chrome(chromedriver_dir, options = options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
     driver.get(msg)
 
     source = driver.page_source
 
-    bs = bs4.BeautifulSoup(source, 'html.parser')
-
+    bs = bs4.BeautifulSoup(source, 'lxml')
     try:
-        title = bs.select_one('meta[itemprop="name"][content]')['content']
-        
-        musicnow.append(title)
-        musictitle.append(title)
+        entire = bs.find_all('span', class_='ytp-time-duration')
+        time = entire[0].get_text().split(":")
+        if len(time) > 2:
+            temp_duration = (time[0] +"시간 " + time[1] + "분")
+        else:
+            temp_duration = time[0] + "분 " + time[1] + "초"
+
         with YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(msg, download=False)
         URL = info['formats'][0]['url']
+        title = info.get("title", None)
+        musicnow.append(title)
+        musictitle.append(title)
+        duration.append(temp_duration)
 
         driver.quit()
-        print(title,("\n"), URL)
         return title, URL
     except:
         return None, None
@@ -301,9 +311,10 @@ def play_next():
     if len(musicnow) > 1:       # 대기열에 노래가 존재하는 경우
         try:
             del musicnow[0]
-            URL = song_queue[0]
+            del username[0]
             del user[0]
             del musictitle[0]
+            URL = song_queue[0]
             del song_queue[0]
             vc.play(discord.FFmpegPCMAudio(URL,**FFMPEG_OPTIONS), after=lambda e: play_next())
         except:
@@ -312,40 +323,29 @@ def play_next():
         try:
             del musictitle[0]
             del musicnow[0]
+            del username[0]
             bot.loop.create_task(vc.disconnect())
         except:
             pass
 
 @bot.command()
-async def 지금노래(ctx):
-    if not vc.is_playing():
-        await ctx.send("지금은 노래가 재생되지 않네요..")
-    else:
-        await ctx.send(embed = discord.Embed(title = "지금노래", description = "현재 " + musicnow[0] + "을(를) 재생하고 있습니다.", color = 0x00ff00))
-
-
-@bot.command()
 async def 정밀검색(ctx, msg):
-    Text = ""
-    global rinklist
-    rinklist = [0,0,0,0,0]
-
-    global vc
-    vc = await ctx.author.voice.channel.connect()
-
-    YDL_OPTIONS = {'format': 'bestaudio','noplaylist':'True'}
-    FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+    rinklist = [0,0,0,0]              # 검색된 노래의 링크들
+    entireText = ["","","",""]       # 검색된 노래의 제목들
+    temp_duration = ["","","",""]                # 검색된 노래의 길이들
+    YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist':'True'}
 
     options = webdriver.ChromeOptions()
     options.add_argument("headless")
+    options.add_argument('--log-level=1')
 
-    chromedriver_dir = r"C:\Users\0711k\Desktop\code\chromedriver_win32\chromedriver.exe"
-    driver = webdriver.Chrome(chromedriver_dir, options = options)
-    driver.get("https://www.youtube.com/results?search_query="+msg)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver.get("https://www.youtube.com/results?search_query="+msg+"+lyrics")
 
     source = driver.page_source
     bs = bs4.BeautifulSoup(source, 'lxml')
     entire = bs.find_all('a', {'id': 'video-title'})
+    
     driver.quit()
 
     select = Select(
@@ -354,35 +354,97 @@ async def 정밀검색(ctx, msg):
         placeholder = "재생하고 싶은 영상을 선택해주세요."
     )
 
+    embed = discord.Embed(title = "검색한 영상들입니다.", color = 0x00ff00)
+
     for i in range(0, 4):
+        text = ""
         entireNum = entire[i]
-        entireText = entireNum.text.strip()  # 영상제목
         test1 = entireNum.get('href')  # 하이퍼링크
+        entireText[i] = entireNum.text.strip()  # 영상제목
         rinklist[i] = 'https://www.youtube.com'+test1
-        Text = Text + str(i+1)+'번째 영상' + entireText +'\n링크 : '+ rinklist[i] + '\n'
-        select.append_option(discord.SelectOption(label = str(i+1) + '번째 영상', description = entireText))
+        aria = entire[i]["aria-label"].split()
+        for j in aria:
+            if "분" in j or "초" in j:
+                text = text + j + " "
+        temp_duration[i] = text
+        embed.add_field(name = str(i+1) + "번째 영상", value = entireText[i] + " | " + temp_duration[i], inline=False)
+        embed.add_field(name = "", value = rinklist[i], inline=False)
+        select.append_option(discord.SelectOption(label = str(i+1) + '번째 영상', description = entireText[i]))
     
-    await ctx.channel.send(embed = discord.Embed(title= "검색한 영상들입니다.", description = Text.strip(), color = 0x00ff00))
+    status1 = await ch.send(embed=embed)
 
     async def my_callback(interaction):
-        if '1번째 영상' in select.values:
-            result, URL = url_music(rinklist[0])
-            await ctx.channel.send(result + "를 재생목록에 추가했어요!\n" + URL)
-        if '2번째 영상' in select.values:
-            result, URL = url_music(rinklist[1])
-            await ctx.channel.send(result + "를 재생목록에 추가했어요!\n" + URL)
-        if '3번째 영상' in select.values:
-            result, URL = url_music(rinklist[2])
-            await ctx.channel.send(result + "를 재생목록에 추가했어요!\n" + URL)
-        if '4번째 영상' in select.values:
-            result, URL = url_music(rinklist[3])
-            await ctx.channel.send(result + "를 재생목록에 추가했어요!\n" + URL)
         await interaction.response.defer()
-            
+        text = ""
+        count = 0
+
+        if '1번째 영상' in select.values:
+            musicnow.append(entireText[0])
+            musictitle.append(entireText[0])
+            duration.append(temp_duration[0])
+            with YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(rinklist[0], download=False)
+            URL = info['formats'][0]['url']
+
+            count = count + 1
+            text = text + str(count) + ". " + entireText[0] + "\n"
+            song_queue.append(URL)
+            user.append(msg)
+            username.append(str(ctx.author))
+
+        if '2번째 영상' in select.values:
+            musicnow.append(entireText[1])
+            musictitle.append(entireText[1])
+            duration.append(temp_duration[1])
+            with YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(rinklist[1], download=False)
+            URL = info['formats'][0]['url']
+
+            count = count + 1
+            text = text + str(count) + ". " + entireText[1] + "\n"
+            song_queue.append(URL)
+            user.append(msg)
+            username.append(str(ctx.author))
+
+        if '3번째 영상' in select.values:
+            musicnow.append(entireText[2])
+            musictitle.append(entireText[2])
+            duration.append(temp_duration[2])
+            with YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(rinklist[2], download=False)
+            URL = info['formats'][0]['url']
+
+            count = count + 1
+            text = text + str(count) + ". " + entireText[2] + "\n"
+            song_queue.append(URL)
+            user.append(msg)
+            username.append(str(ctx.author))
+
+        if '4번째 영상' in select.values:
+            musicnow.append(entireText[3])
+            musictitle.append(entireText[3])
+            duration.append(temp_duration[3])
+            with YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(rinklist[3], download=False)
+            URL = info['formats'][0]['url']
+
+            count = count + 1
+            text = text + str(count) + ". " + entireText[3] + "\n"
+            song_queue.append(URL)
+            user.append(msg)
+            username.append(str(ctx.author))
+        
+        await status1.delete()
+        await status2.delete()
+        status = await ch.send(embed = discord.Embed(title= "추가한 영상들입니다.", description = text.strip(), color = 0x00ff00))
+        await asyncio.sleep(message_time)
+        await status.delete()
+
+
     select.callback = my_callback
     view = View()
     view.add_item(select)
 
-    await ctx.channel.send(view = view)
+    status2 = await ch.send(view = view)
 
 bot.run(token)
